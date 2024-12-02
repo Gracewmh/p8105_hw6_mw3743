@@ -6,3 +6,100 @@ output: github_document
 ---
 
 This assignment reinforces ideas in [Linear Models](https://p8105.com/topic_linear_models.html).
+
+Load key packages:
+
+```{r setup, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(ggplot2)
+library(modelr)
+library(mgcv)
+
+knitr::opts_chunk$set(
+    echo = TRUE,
+    warning = FALSE,
+    fig.width = 8, 
+  fig.height = 6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+
+set.seed(1)
+```
+
+# Problem 2
+
+Create a city_state variable (e.g. “Baltimore, MD”), and a binary variable indicating whether the homicide is solved. Omit cities Dallas, TX; Phoenix, AZ; and Kansas City, MO – these don’t report victim race. Also omit Tulsa, AL – this is a data entry mistake. For this problem, limit your analysis those for whom victim_race is white or black. Be sure that victim_age is numeric.
+
+```{r}
+homicide_data <- read.csv("https://raw.githubusercontent.com/washingtonpost/data-homicides/refs/heads/master/homicide-data.csv")|>
+  mutate(
+    city_state = paste(city, state, sep = ", "),
+    resolved = as.numeric(disposition == "Closed by arrest"),
+    victim_age = as.numeric(victim_age)
+    ) |> 
+  filter(
+    !city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL") &
+    victim_race %in% c("White", "Black") 
+    ) |> 
+  drop_na(victim_age) |> view()
+```
+
+
+For the city of Baltimore, MD, use the glm function to fit a logistic regression with resolved vs unresolved as the outcome and victim age, sex and race as predictors: 
+
+- save the output of glm as an R object; 
+- apply the broom::tidy to this object; 
+
+```{r}
+fit_md_logistic = homicide_data |>
+  filter(city_state == "Baltimore, MD") |>
+  glm(resolved ~ victim_age + victim_sex + victim_race, data = _, family = binomial()) 
+  
+fit_md_logistic|>
+  broom::tidy()|> 
+  knitr::kable(digits = 3)
+```
+
+- obtain the estimate and confidence interval of the adjusted odds ratio for solving homicides comparing male victims to female victims keeping all other variables fixed.
+
+```{r}
+fit_md_logistic|>
+  broom::tidy(conf.int = TRUE)|> 
+  mutate(
+    OR = exp(estimate),           
+    OR_conf.low = exp(conf.low), 
+    OR_conf.high = exp(conf.high)
+  )|>
+  filter(term == "victim_sexMale") |>
+  select(term, OR, OR_conf.low, OR_conf.high) |>
+  knitr::kable(digits = 3)
+```
+
+**Intepretation**: The adjusted odds ratio (OR) for solving homicides comparing male victims to female victims, keeping all other variables fixed (age and race), is 0.426. This indicates that the odds of solving homicides for male victims are approximately 57.4% lower compared to female victims, holding age and race constant. The 95% confidence interval for the OR is between 32.4% and 55.8%, which means we are 95% confident that the true odds ratio lies between 32.4% and 55.8%. This provides strong evidence that male victims are less likely to have their homicides solved compared to female victims, when other factors are controlled.
+
+Run glm for each of the cities in your dataset, and extract the adjusted odds ratio (and CI) for solving homicides comparing male victims to female victims. Do this within a “tidy” pipeline, making use of purrr::map, list columns, and unnest as necessary to create a dataframe with estimated ORs and CIs for each city.
+
+```{r}
+homicide_data |>
+  group_by(city_state) |>
+  nest(data = -city_state) |>
+  mutate(
+    models = map(data, \(df) glm(resolved ~ victim_age + victim_sex + victim_race, data = df, family = binomial()) ),
+    results = map(models, \(df) broom::tidy(df, conf.int = TRUE, exponentiate = TRUE))) |> 
+  select(-data, -models) |> 
+  unnest(results)|>
+  filter(term == "victim_sexMale")|>
+  select(city_state, term, OR=estimate, CI_lower = conf.low, CI_upper = conf.high)|>
+  knitr::kable(digits = 3)
+```
+
