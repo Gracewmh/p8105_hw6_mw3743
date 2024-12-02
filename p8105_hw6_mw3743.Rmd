@@ -1,0 +1,8 @@
+---
+title: "Homework 6 Linear Models"
+author: "Minghui Wang"
+date: "2024-12-02"
+output: github_document
+---
+
+This assignment reinforces ideas in [Linear Models](https://p8105.com/topic_linear_models.html).
